@@ -1,13 +1,14 @@
 [project]
-name = "ok-serial-pubsub-relay"
+name = "ok-serial-relay"
 version = "0.1.0"
-description = "Add your description here"
+description = "Serial-port JSON message relay"
 readme = "README.md"
 authors = [{ name = "Dan Egnor", email = "egnor@ofb.net" }]
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = [
     "anycrc>=1.3.6",
     "msgspec>=0.20.0",
+    "ok-logging-setup>=0.10",
 ]
 
 [build-system]
@@ -18,7 +19,7 @@ build-backend = "uv_build"
 dev = ["mypy", "pytest", "ruff"]
 
 [project.scripts]
-okrelay = "ok_serial_pubsub_relay.okrelay_cli:main"
+okrelay = "ok_serial_relay.okrelay_cli:main"
 
 [tool.mypy]
 exclude_gitignore = true
