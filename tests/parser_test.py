@@ -2,7 +2,8 @@
 
 import msgspec
 
-import ok_serial_relay.protocol as proto
+from ok_serial_relay import parser
+from ok_serial_relay import protocol
 
 
 class ExamplePayload(msgspec.Struct):
@@ -29,40 +30,40 @@ LINE_CHECKS = [
 
 def test_line_to_bytes():
     for prefix, payload, data in LINE_CHECKS:
-        line = proto.Line(prefix, msgspec.json.encode(payload))
-        assert proto.line_to_bytes(line) == data
+        line = protocol.Line(prefix, msgspec.json.encode(payload))
+        assert parser.line_to_bytes(line) == data
 
 
 def test_line_from_bytes():
     for prefix, payload, data in LINE_CHECKS:
-        line = proto.try_parse_line(data)
+        line = parser.try_parse_line(data)
         assert line.prefix == prefix
-        assert msgspec.json.decode(line.json) == payload
+        assert msgspec.json.decode(line.payload) == payload
 
 
 def test_line_from_bytes_unchecked():
     for prefix, payload, data in LINE_CHECKS:
-        line_ltag = proto.try_parse_line(data[:-3] + b"~~~")
-        line_utag = proto.try_parse_line(data[:-3] + b"~~~")
+        line_ltag = parser.try_parse_line(data[:-3] + b"~~~")
+        line_utag = parser.try_parse_line(data[:-3] + b"~~~")
         assert line_ltag.prefix == line_utag.prefix == prefix
-        assert msgspec.json.decode(line_ltag.json) == payload
-        assert msgspec.json.decode(line_utag.json) == payload
+        assert msgspec.json.decode(line_ltag.payload) == payload
+        assert msgspec.json.decode(line_utag.payload) == payload
 
 
 def test_try_decode_json():
-    example_line = proto.Line(b"EXAMPLE", b'{"a":1,"b":"x"}')
-    example_payload = proto.try_decode_json(example_line, ExamplePayload)
+    example_line = protocol.Line(b"EXAMPLE", b'{"a":1,"b":"x"}')
+    example_payload = parser.try_decode_json(example_line, ExamplePayload)
     assert example_payload == ExamplePayload(1, "x")
 
-    example_line = proto.Line(b"OTHER", b'{"a":2,"b":"y"}')
-    example_payload = proto.try_decode_json(example_line, ExamplePayload)
+    example_line = protocol.Line(b"OTHER", b'{"a":2,"b":"y"}')
+    example_payload = parser.try_decode_json(example_line, ExamplePayload)
     assert example_payload is None
 
-    example_line = proto.Line(b"EXAMPLE", b'{"a":"x","b":1}')
-    example_payload = proto.try_decode_json(example_line, ExamplePayload)
+    example_line = protocol.Line(b"EXAMPLE", b'{"a":"x","b":1}')
+    example_payload = parser.try_decode_json(example_line, ExamplePayload)
     assert example_payload is None
 
 
 def test_line_from_payload():
-    line = proto.line_from_payload(ExamplePayload(1, "x"))
-    assert line == proto.Line(b"EXAMPLE", b'{"a":1,"b":"x"}')
+    line = parser.line_from_payload(ExamplePayload(1, "x"))
+    assert line == protocol.Line(b"EXAMPLE", msgspec.Raw(b'{"a":1,"b":"x"}'))

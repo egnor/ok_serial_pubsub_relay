@@ -11,6 +11,3 @@ postinstall = "uv sync"
 
 [tasks.check]
 run = ["black --check .", "ruff check", "mypy", "pytest"]
-
-[tasks.fix]
-run = ["black .", "ruff check --fix", "mypy", "pytest"]
