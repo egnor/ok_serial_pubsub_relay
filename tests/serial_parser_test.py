@@ -2,8 +2,8 @@
 
 import msgspec
 
-from ok_serial_relay import parser
-from ok_serial_relay import protocol
+from ok_serial_relay import serial_parser
+from ok_serial_relay.serial_protocol import Line
 
 
 class ExamplePayload(msgspec.Struct):
@@ -28,42 +28,42 @@ LINE_CHECKS = [
 ]
 
 
-def test_line_to_bytes():
+def test_to_bytes():
     for prefix, payload, data in LINE_CHECKS:
-        line = protocol.Line(prefix, msgspec.json.encode(payload))
-        assert parser.line_to_bytes(line) == data
+        line = Line(prefix, msgspec.json.encode(payload))
+        assert serial_parser.to_bytes(line) == data
 
 
-def test_line_from_bytes():
+def test_try_parse():
     for prefix, payload, data in LINE_CHECKS:
-        line = parser.try_parse_line(data)
+        line = serial_parser.try_parse(data)
         assert line.prefix == prefix
         assert msgspec.json.decode(line.payload) == payload
 
 
-def test_line_from_bytes_unchecked():
+def test_try_parse_unchecked():
     for prefix, payload, data in LINE_CHECKS:
-        line_ltag = parser.try_parse_line(data[:-3] + b"~~~")
-        line_utag = parser.try_parse_line(data[:-3] + b"~~~")
+        line_ltag = serial_parser.try_parse(data[:-3] + b"~~~")
+        line_utag = serial_parser.try_parse(data[:-3] + b"~~~")
         assert line_ltag.prefix == line_utag.prefix == prefix
         assert msgspec.json.decode(line_ltag.payload) == payload
         assert msgspec.json.decode(line_utag.payload) == payload
 
 
-def test_try_decode_json():
-    example_line = protocol.Line(b"EXAMPLE", b'{"a":1,"b":"x"}')
-    example_payload = parser.try_decode_json(example_line, ExamplePayload)
+def test_try_as():
+    example_line = Line(b"EXAMPLE", b'{"a":1,"b":"x"}')
+    example_payload = serial_parser.try_as(example_line, ExamplePayload)
     assert example_payload == ExamplePayload(1, "x")
 
-    example_line = protocol.Line(b"OTHER", b'{"a":2,"b":"y"}')
-    example_payload = parser.try_decode_json(example_line, ExamplePayload)
+    example_line = Line(b"OTHER", b'{"a":2,"b":"y"}')
+    example_payload = serial_parser.try_as(example_line, ExamplePayload)
     assert example_payload is None
 
-    example_line = protocol.Line(b"EXAMPLE", b'{"a":"x","b":1}')
-    example_payload = parser.try_decode_json(example_line, ExamplePayload)
+    example_line = Line(b"EXAMPLE", b'{"a":"x","b":1}')
+    example_payload = serial_parser.try_as(example_line, ExamplePayload)
     assert example_payload is None
 
 
-def test_line_from_payload():
-    line = parser.line_from_payload(ExamplePayload(1, "x"))
-    assert line == protocol.Line(b"EXAMPLE", msgspec.Raw(b'{"a":1,"b":"x"}'))
+def test_from_payload():
+    line = serial_parser.from_payload(ExamplePayload(1, "x"))
+    assert line == Line(b"EXAMPLE", msgspec.Raw(b'{"a":1,"b":"x"}'))

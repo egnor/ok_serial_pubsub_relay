@@ -7,7 +7,7 @@ import msgspec
 import re
 import typing
 
-from ok_serial_relay import protocol
+from ok_serial_relay import serial_protocol
 
 logger = logging.getLogger(__name__)
 
@@ -26,14 +26,18 @@ _crc18 = anycrc.CRC(
 )
 assert _crc18.calc("123456789") == 0x23A17
 
+_PREFIX_RE = re.compile(rb"\w*")
+
 _LINE_RE = re.compile(
     rb"\s*(\w*)"  # prefix
     rb"(\s*(?:\".*\"|{.*}|\[.*\]|(?:^|\s)[\w.-]+\s)\s*)"  # json
     rb"([\w-]{3}|~~~)\s*"  # crc/bypass
 )
 
+_ST = typing.TypeVar("ST", bound=msgspec.Struct)
 
-def try_parse_line(data: bytes) -> protocol.Line | None:
+
+def try_parse(data: bytes) -> serial_protocol.Line | None:
     match = _LINE_RE.fullmatch(data)
     if not match:
         logger.debug("Bad format: %s", data)
@@ -52,13 +56,12 @@ def try_parse_line(data: bytes) -> protocol.Line | None:
                 exc_info=True,
             )
             return None
-    return protocol.Line(prefix, msgspec.Raw(json))
+    return serial_protocol.Line(prefix, msgspec.Raw(json))
 
 
-_PREFIX_RE = re.compile(rb"\w*")
-
-
-def line_to_bytes(line: protocol.Line) -> bytes:
+def to_bytes(line: serial_protocol.Line | None) -> bytes:
+    if not line:
+        return b""
     assert _PREFIX_RE.fullmatch(line.prefix)
     out = bytearray(line.prefix)
     if out and line.payload[0] not in b'"[{':
@@ -71,13 +74,10 @@ def line_to_bytes(line: protocol.Line) -> bytes:
     return bytes(out)
 
 
-ST = typing.TypeVar("ST", bound=msgspec.Struct)
-
-
-def try_decode_json(line: protocol.Line, as_type: type[ST]) -> ST | None:
+def try_as(line: serial_protocol.Line | None, as_type: type[_ST]) -> _ST | None:
     prefix = getattr(as_type, "PREFIX")
     assert isinstance(prefix, bytes), f"No/bad PREFIX: {as_type.__name__}"
-    if prefix == line.prefix:
+    if line and prefix == line.prefix:
         try:
             return msgspec.json.decode(line.payload, type=as_type)
         except msgspec.DecodeError:
@@ -86,7 +86,9 @@ def try_decode_json(line: protocol.Line, as_type: type[ST]) -> ST | None:
     return None
 
 
-def line_from_payload(payload: msgspec.Struct) -> protocol.Line:
+def from_payload(payload: msgspec.Struct) -> serial_protocol.Line:
     prefix = getattr(payload, "PREFIX")
     assert isinstance(prefix, bytes), f"no/bad PREFIX: {payload}"
-    return protocol.Line(prefix, msgspec.Raw(json_encoder.encode(payload)))
+    return serial_protocol.Line(
+        prefix, msgspec.Raw(json_encoder.encode(payload))
+    )

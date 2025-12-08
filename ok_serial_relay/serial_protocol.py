@@ -8,7 +8,7 @@ class Line(msgspec.Struct, frozen=True):
     payload: msgspec.Raw
 
 
-class PublishPayload(
+class MessagePayload(
     msgspec.Struct, array_like=True, frozen=True, omit_defaults=True
 ):
     PREFIX = b""

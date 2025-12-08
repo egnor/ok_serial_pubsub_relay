@@ -1,10 +1,10 @@
-"""Time synchronization engine"""
+"""Basic embedded/unix time synchronization engine"""
 
 import datetime
 import logging
 import msgspec
 
-import ok_serial_relay.protocol as proto
+from ok_serial_relay.serial_protocol import TimeQueryPayload, TimeReplyPayload
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +17,7 @@ class TimeTracker:
     ) -> None:
         self._start_time = when
         self._next_query_time = when  # start immediately
-        self._pending_reply: proto.TimeReplyPayload | None = None
+        self._pending_reply: TimeReplyPayload | None = None
         self._profile_id = profile_id
         self._profile_len = profile_len
 
@@ -26,11 +26,12 @@ class TimeTracker:
 
     def get_payload_to_send(
         self, *, when: float
-    ) -> proto.TimeQueryPayload | proto.TimeReplyPayload | None:
+    ) -> TimeQueryPayload | TimeReplyPayload | None:
         if self._pending_reply:
             msec = int((when - self._start_time) * 1e3 + 0.5)
             reply = msgspec.structs.replace(self._pending_reply, tx_msec=msec)
             self._pending_reply = None
+            logger.debug("To send: %s", reply)
             return reply
 
         if when >= self._next_query_time:
@@ -39,7 +40,7 @@ class TimeTracker:
                 when + TIME_QUERY_INTERVAL - 1,
             )
             dt = datetime.datetime.fromtimestamp(when, datetime.timezone.utc)
-            return proto.TimeQueryPayload(
+            query = TimeQueryPayload(
                 yyyymmdd=int(dt.year * 10000 + dt.month * 100 + dt.day),
                 hhmmssmmm=int(
                     dt.hour * 10000000
@@ -48,13 +49,16 @@ class TimeTracker:
                     + dt.microsecond // 1000
                 ),
             )
+            logger.debug("To send: %s", query)
+            return query
 
         return None
 
     def on_query_received(
-        self, query: proto.TimeQueryPayload, *, when: float
+        self, query: TimeQueryPayload, *, when: float
     ) -> None:
-        self._pending_reply = proto.TimeReplyPayload(
+        logger.debug("Received: %s", query)
+        self._pending_reply = TimeReplyPayload(
             yyyymmdd=query.yyyymmdd,
             hhmmssmmm=query.hhmmssmmm,
             rx_msec=int((when - self._start_time) * 1e3 + 0.5),
@@ -64,7 +68,12 @@ class TimeTracker:
         )
 
     def on_reply_received(
-        self, reply: proto.TimeReplyPayload, *, when: float
+        self, reply: TimeReplyPayload, *, when: float
     ) -> None:
+        logger.debug("Received: %s", reply)
         # TODO: actual time conversion tracking!!
         pass
+
+    def try_convert(self, msec: int) -> float:
+        # TODO: actual time conversion!!
+        return 0.0
