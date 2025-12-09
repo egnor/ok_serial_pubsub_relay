@@ -10,4 +10,4 @@ python.uv_venv_auto = true
 postinstall = "uv sync"
 
 [tasks.check]
-run = ["black --check .", "ruff check", "mypy", "pytest"]
+run = ["uv sync", "black --check .", "ruff check", "mypy", "pytest"]
