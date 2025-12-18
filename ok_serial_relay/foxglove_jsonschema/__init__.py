@@ -1,7 +1,6 @@
 """Present Foxglove JSON schemas as bytes"""
 
 import importlib.resources
-import pydantic
 
 _PACKAGE_NAME = "ok_serial_relay.foxglove_jsonschema"
 
@@ -14,7 +13,6 @@ _available_schemas = {
 _loaded_schemas: dict[str, bytes] = {}
 
 
-@pydantic.validate_call
 def get(name: str) -> bytes:
     if loaded := _loaded_schemas.get(name):
         return loaded

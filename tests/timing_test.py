@@ -3,7 +3,7 @@
 from ok_serial_relay import line_types
 from ok_serial_relay import timing
 
-JAN_1_2025_123456Z = 1735734896
+JAN_1_2025_123456Z = 1735734896.0
 
 
 def test_outgoing_query_timing():

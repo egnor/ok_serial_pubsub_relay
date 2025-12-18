@@ -28,8 +28,8 @@ class TimeTracker:
     ) -> TimeQueryPayload | TimeReplyPayload | None:
         if self._pending_reply:
             msec = int((when - self._start_time) * 1e3 + 0.5)
-            reply = self._pending_reply._replace(tx_msec=msec)
-            self._pending_reply = None
+            reply, self._pending_reply = self._pending_reply, None
+            reply.tx_msec = msec
             logger.debug("To send: %s", reply)
             return reply
 

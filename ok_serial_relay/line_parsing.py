@@ -3,15 +3,13 @@
 import anycrc  # type: ignore
 import base64
 import logging
-import pydantic
+import msgspec
 import re
 import typing
 
 from ok_serial_relay.line_types import Line
 
 logger = logging.getLogger(__name__)
-
-_NT = typing.TypeVar("_NT", bound=typing.NamedTuple)
 
 # https://users.ece.cmu.edu/~koopman/crc/c18/0x25f53.txt
 # an 18-bit (3-base64-char) CRC with decent protection across lengths
@@ -34,7 +32,6 @@ _LINE_RE = re.compile(
 )
 
 
-@pydantic.validate_call
 def try_from_bytes(data: bytes) -> Line | None:
     match = _LINE_RE.fullmatch(data)
     if not match:
@@ -54,10 +51,9 @@ def try_from_bytes(data: bytes) -> Line | None:
                 exc_info=True,
             )
             return None
-    return Line(prefix=prefix, payload=payload)
+    return Line(prefix=prefix, payload=msgspec.Raw(payload))
 
 
-@pydantic.validate_call
 def to_bytes(line: Line | None) -> bytes:
     if not line:
         return b""
@@ -73,24 +69,20 @@ def to_bytes(line: Line | None) -> bytes:
     return bytes(out)
 
 
-def try_payload(line: Line | None, payload_type: type[_NT]) -> _NT | None:
-    prefix, adapter = _payload_meta(payload_type)
-    if line and line.prefix == prefix:
+_T = typing.TypeVar("_T", bound=msgspec.Struct)
+
+
+def try_payload(line: Line | None, payload_type: type[_T]) -> _T | None:
+    if line and line.prefix == getattr(payload_type, "PREFIX", None):
         try:
-            return adapter.validate_json(line.payload)
-        except pydantic.ValidationError:
+            return msgspec.json.decode(line.payload, type=payload_type)
+        except msgspec.DecodeError:
             name = payload_type.__name__
             logger.warning("Bad %s: %s", name, line.payload, exc_info=True)
     return None
 
 
-def from_payload(payload: _NT) -> Line:
-    prefix, adapter = _payload_meta(type(payload))
-    payload_json = adapter.dump_json(payload, exclude_defaults=True)
-    return Line(prefix=prefix, payload=payload_json)
-
-
-def _payload_meta(pt: type[_NT]) -> tuple[bytes, pydantic.TypeAdapter]:
-    if not (adapter := getattr(pt, "ADAPTER", None)):
-        setattr(pt, "ADAPTER", adapter := pydantic.TypeAdapter(pt))
-    return (getattr(pt, "PREFIX"), adapter)
+def from_payload(payload: _T) -> Line:
+    prefix = getattr(type(payload), "PREFIX")
+    payload_json = msgspec.json.encode(payload)
+    return Line(prefix=prefix, payload=msgspec.Raw(payload_json))

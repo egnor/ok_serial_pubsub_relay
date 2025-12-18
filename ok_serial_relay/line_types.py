@@ -1,43 +1,39 @@
 """Basic serial-line protocol definitions"""
 
-import pydantic
-import typing
+import msgspec
 
 
-class Line(pydantic.BaseModel):
-    model_config = pydantic.ConfigDict(frozen=True)
+class Line(msgspec.Struct, frozen=True):
     prefix: bytes
-    payload: bytes  # Raw JSON bytes
+    payload: msgspec.Raw  # JSON contents
 
 
-class MessagePayload(typing.NamedTuple):
+class MessagePayload(msgspec.Struct, array_like=True, omit_defaults=True):
+    PREFIX = b""
     topic: str
-    body: typing.Any  # Parsed JSON value (not bytes) for embedding in array
+    body: msgspec.Raw  # JSON message body
     msec: int = 0
     schema_name: str = ""
 
 
-class ProfileEntryPayload(typing.NamedTuple):
+class ProfileEntryPayload(msgspec.Struct, array_like=True, omit_defaults=True):
+    PREFIX = b"Pe"
     entry_index: int
     type: str
     data: list
 
 
-class TimeQueryPayload(typing.NamedTuple):
+class TimeQueryPayload(msgspec.Struct, array_like=True, omit_defaults=True):
+    PREFIX = b"Tq"
     yyyymmdd: int
     hhmmssmmm: int
 
 
-class TimeReplyPayload(typing.NamedTuple):
+class TimeReplyPayload(msgspec.Struct, array_like=True, omit_defaults=True):
+    PREFIX = b"Tr"
     yyyymmdd: int
     hhmmssmmm: int
     rx_msec: int
     tx_msec: int
     profile_id: int
     profile_len: int
-
-
-MessagePayload.PREFIX = b""  # type: ignore[attr-defined]
-ProfileEntryPayload.PREFIX = b"Pe"  # type: ignore[attr-defined]
-TimeQueryPayload.PREFIX = b"Tq"  # type: ignore[attr-defined]
-TimeReplyPayload.PREFIX = b"Tr"  # type: ignore[attr-defined]

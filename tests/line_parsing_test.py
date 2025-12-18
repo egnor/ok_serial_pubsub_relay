@@ -1,13 +1,13 @@
 """Unit tests for ok_serial_relay.protocol"""
 
 import json
-import typing
+import msgspec
 
 from ok_serial_relay import line_parsing
 from ok_serial_relay import line_types
 
 
-class ExamplePayload(typing.NamedTuple):
+class ExamplePayload(msgspec.Struct, array_like=True, omit_defaults=True):
     a: int
     b: str = "def"
 
@@ -44,7 +44,7 @@ def test_try_parse():
     for prefix, payload_data, data in LINE_CHECKS:
         line = line_parsing.try_from_bytes(data)
         assert line.prefix == prefix
-        assert json.loads(line.payload) == payload_data
+        assert msgspec.json.decode(line.payload) == payload_data
 
 
 def test_try_parse_unchecked():
@@ -52,8 +52,8 @@ def test_try_parse_unchecked():
         line_ltag = line_parsing.try_from_bytes(data[:-3] + b"~~~")
         line_utag = line_parsing.try_from_bytes(data[:-3] + b"~~~")
         assert line_ltag.prefix == line_utag.prefix == prefix
-        assert json.loads(line_ltag.payload) == payload_data
-        assert json.loads(line_utag.payload) == payload_data
+        assert msgspec.json.decode(line_ltag.payload) == payload_data
+        assert msgspec.json.decode(line_utag.payload) == payload_data
 
 
 def test_try_as():

@@ -1,7 +1,6 @@
 """Session-level protocol state"""
 
 import logging
-import pydantic
 import typing
 
 from ok_serial_relay import foxglove_jsonschema
@@ -14,8 +13,7 @@ logger = logging.getLogger(__name__)
 INCOMING_LINE_MAX = 65536
 
 
-class ReceivedMessage(pydantic.BaseModel):
-    model_config = pydantic.ConfigDict(frozen=True)
+class ReceivedMessage(typing.NamedTuple):
     topic: str
     body: typing.Any  # JSON payload
     schema_data: bytes
@@ -24,7 +22,6 @@ class ReceivedMessage(pydantic.BaseModel):
 
 
 class Session:
-    @pydantic.validate_call
     def __init__(
         self,
         *,
@@ -42,7 +39,6 @@ class Session:
             profile_len=len(profile),
         )
 
-    @pydantic.validate_call
     def get_bytes_to_send(self, *, when: float, buffer_empty: bool) -> bytes:
         to_send: line_types.Line | None = None
         if self._time_tracker.has_payload_to_send(when=when):
@@ -57,7 +53,6 @@ class Session:
         else:
             return b""
 
-    @pydantic.validate_call
     def on_bytes_received(self, data: bytes, *, when: float) -> None:
         while data:
             if not self._in_bytes:
@@ -73,7 +68,6 @@ class Session:
                     self._in_bytes[:] = b""
                 return
 
-    @pydantic.validate_call
     def get_received_messages(self) -> list[ReceivedMessage]:
         out, self._in_messages = self._in_messages, []
         return out
