@@ -1,22 +1,25 @@
 """Session-level protocol state"""
 
+import json
 import logging
-import msgspec
+
+from pydantic import BaseModel, ConfigDict
 
 from ok_serial_relay import foxglove_jsonschema
-from ok_serial_relay import serial_protocol
-from ok_serial_relay import serial_parser
-import ok_serial_relay.timing
+from ok_serial_relay import line_types
+from ok_serial_relay import line_parsing
+from ok_serial_relay import timing
 
 logger = logging.getLogger(__name__)
 
 INCOMING_LINE_MAX = 65536
 
 
-class ReceivedMessage(msgspec.Struct, frozen=True):
+class ReceivedMessage(BaseModel):
+    model_config = ConfigDict(frozen=True)
     topic: str
-    body: msgspec.Raw
-    schema: bytes
+    body: bytes  # Raw JSON bytes
+    schema_data: bytes
     unixtime: float = 0.0
     msec: int = 0
 
@@ -26,30 +29,30 @@ class Session:
         self,
         *,
         when: float,
-        profile: list[serial_protocol.ProfileEntryPayload] = [],
+        profile: list[line_types.ProfileEntryPayload] = [],
     ) -> None:
         self._in_bytes = bytearray()
         self._in_bytes_time = 0.0
         self._in_messages: list[ReceivedMessage] = []
         self._local_profile = profile[:]
-        self._remote_profile: list[serial_protocol.ProfileEntryPayload] = []
-        self._time_tracker = ok_serial_relay.timing.TimeTracker(
+        self._remote_profile: list[line_types.ProfileEntryPayload] = []
+        self._time_tracker = timing.TimeTracker(
             when=when,
             profile_id=hash(tuple(profile)),
             profile_len=len(profile),
         )
 
     def get_bytes_to_send(self, *, when: float, buffer_empty: bool) -> bytes:
-        to_send: serial_protocol.Line | None = None
+        to_send: line_types.Line | None = None
         if self._time_tracker.has_payload_to_send(when=when):
             if not buffer_empty:
                 return b""  # priority buffer-empty for timed message
             if payload := self._time_tracker.get_payload_to_send(when=when):
-                to_send = serial_parser.from_payload(payload)
+                to_send = line_parsing.from_payload(payload)
 
         if to_send:
             logger.debug("To send: %s", to_send)
-            return serial_parser.to_bytes(to_send)
+            return line_parsing.to_bytes(to_send)
         else:
             return b""
 
@@ -73,39 +76,41 @@ class Session:
         return out
 
     def _parse_one_line(self) -> None:
-        if not (line := serial_parser.try_parse(self._in_bytes)):
+        if not (line := line_parsing.try_from_bytes(self._in_bytes)):
             return
-        if qp := serial_parser.try_as(line, serial_protocol.TimeQueryPayload):
+        if qp := line_parsing.try_payload(line, line_types.TimeQueryPayload):
             logger.debug("Received: %s", qp)
             self._time_tracker.on_query_received(qp, when=self._in_bytes_time)
-        elif rp := serial_parser.try_as(line, serial_protocol.TimeReplyPayload):
-            logger.debug("Received: %s", qp)
+        elif rp := line_parsing.try_payload(line, line_types.TimeReplyPayload):
+            logger.debug("Received: %s", rp)
             self._time_tracker.on_reply_received(rp, when=self._in_bytes_time)
-        elif mp := serial_parser.try_as(line, serial_protocol.MessagePayload):
-            logger.debug("Received: %s", qp)
+        elif mp := line_parsing.try_payload(line, line_types.MessagePayload):
+            logger.debug("Received: %s", mp)
             self._in_messages.append(self._import_message(mp))
         else:
             logger.warning("Unknown: %s", line)
 
-    def _import_message(
-        self, m: serial_protocol.MessagePayload
-    ) -> ReceivedMessage:
-        if not m.schema:
+    def _import_message(self, m: line_types.MessagePayload) -> ReceivedMessage:
+        schema = m.schema_name
+        if not schema:
             schema_data = b""
-        elif m.schema.startswith("json:"):
-            schema_data = m.schema[5:].encode()
-        elif m.schema.startswith("fox:"):
+        elif schema.startswith("json:"):
+            schema_data = schema[5:].encode()
+        elif schema.startswith("fox:"):
             logger.warning("Bad Foxglove schema: %s", m)
-            schema_data = foxglove_jsonschema.get(m.schema[4:])
-            schema_data = schema_data or b"ERROR:NOTFOUND:" + m.schema.encode()
+            schema_data = foxglove_jsonschema.get(schema[4:])
+            schema_data = schema_data or b"ERROR:NOTFOUND:" + schema.encode()
         else:
             logger.warning("Bad schema type: %s", m)
-            schema_data = b"ERROR:INVALID:" + m.schema.encode()
+            schema_data = b"ERROR:INVALID:" + schema.encode()
+
+        # Re-encode body to bytes for storage
+        body_bytes = json.dumps(m.body, separators=(",", ":")).encode()
 
         return ReceivedMessage(
             topic=m.topic,
-            body=m.body,
-            schema=schema_data,
+            body=body_bytes,
+            schema_data=schema_data,
             unixtime=self._time_tracker.try_convert(m.msec),
             msec=m.msec,
         )

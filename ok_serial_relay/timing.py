@@ -2,9 +2,8 @@
 
 import datetime
 import logging
-import msgspec
 
-from ok_serial_relay.serial_protocol import TimeQueryPayload, TimeReplyPayload
+from ok_serial_relay.line_types import TimeQueryPayload, TimeReplyPayload
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +28,7 @@ class TimeTracker:
     ) -> TimeQueryPayload | TimeReplyPayload | None:
         if self._pending_reply:
             msec = int((when - self._start_time) * 1e3 + 0.5)
-            reply = msgspec.structs.replace(self._pending_reply, tx_msec=msec)
+            reply = self._pending_reply._replace(tx_msec=msec)
             self._pending_reply = None
             logger.debug("To send: %s", reply)
             return reply
