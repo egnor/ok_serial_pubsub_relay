@@ -1,9 +1,8 @@
 """Session-level protocol state"""
 
-import json
 import logging
-
-from pydantic import BaseModel, ConfigDict
+import pydantic
+import typing
 
 from ok_serial_relay import foxglove_jsonschema
 from ok_serial_relay import line_types
@@ -15,16 +14,17 @@ logger = logging.getLogger(__name__)
 INCOMING_LINE_MAX = 65536
 
 
-class ReceivedMessage(BaseModel):
-    model_config = ConfigDict(frozen=True)
+class ReceivedMessage(pydantic.BaseModel):
+    model_config = pydantic.ConfigDict(frozen=True)
     topic: str
-    body: bytes  # Raw JSON bytes
+    body: typing.Any  # JSON payload
     schema_data: bytes
     unixtime: float = 0.0
     msec: int = 0
 
 
 class Session:
+    @pydantic.validate_call
     def __init__(
         self,
         *,
@@ -42,6 +42,7 @@ class Session:
             profile_len=len(profile),
         )
 
+    @pydantic.validate_call
     def get_bytes_to_send(self, *, when: float, buffer_empty: bool) -> bytes:
         to_send: line_types.Line | None = None
         if self._time_tracker.has_payload_to_send(when=when):
@@ -56,6 +57,7 @@ class Session:
         else:
             return b""
 
+    @pydantic.validate_call
     def on_bytes_received(self, data: bytes, *, when: float) -> None:
         while data:
             if not self._in_bytes:
@@ -71,6 +73,7 @@ class Session:
                     self._in_bytes[:] = b""
                 return
 
+    @pydantic.validate_call
     def get_received_messages(self) -> list[ReceivedMessage]:
         out, self._in_messages = self._in_messages, []
         return out
@@ -104,13 +107,10 @@ class Session:
             logger.warning("Bad schema type: %s", m)
             schema_data = b"ERROR:INVALID:" + schema.encode()
 
-        # Re-encode body to bytes for storage
-        body_bytes = json.dumps(m.body, separators=(",", ":")).encode()
-
         return ReceivedMessage(
             topic=m.topic,
-            body=body_bytes,
+            body=m.body,
             schema_data=schema_data,
-            unixtime=self._time_tracker.try_convert(m.msec),
+            unixtime=self._time_tracker.try_from_msec(m.msec),
             msec=m.msec,
         )

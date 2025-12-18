@@ -73,6 +73,10 @@ class TimeTracker:
         # TODO: actual time conversion tracking!!
         pass
 
-    def try_convert(self, msec: int) -> float:
+    def try_from_msec(self, msec: int) -> float:
         # TODO: actual time conversion!!
         return 0.0
+
+    def try_to_msec(self, unixtime: float) -> int:
+        # TODO: actual time conversion!!
+        return 0

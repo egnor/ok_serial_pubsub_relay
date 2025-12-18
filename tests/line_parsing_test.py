@@ -1,16 +1,18 @@
 """Unit tests for ok_serial_relay.protocol"""
 
 import json
-from typing import NamedTuple
+import typing
 
 from ok_serial_relay import line_parsing
-from ok_serial_relay.line_types import Line, payload
+from ok_serial_relay import line_types
 
 
-@payload(b"EXAMPLE")
-class ExamplePayload(NamedTuple):
+class ExamplePayload(typing.NamedTuple):
     a: int
-    b: str
+    b: str = "def"
+
+
+ExamplePayload.PREFIX = b"EXAMPLE"  # type: ignore[attr-defined]
 
 
 LINE_CHECKS = [
@@ -31,7 +33,7 @@ LINE_CHECKS = [
 
 def test_to_bytes():
     for prefix, payload_data, data in LINE_CHECKS:
-        line = Line(
+        line = line_types.Line(
             prefix=prefix,
             payload=json.dumps(payload_data, separators=(",", ":")).encode(),
         )
@@ -55,19 +57,27 @@ def test_try_parse_unchecked():
 
 
 def test_try_as():
-    example_line = Line(prefix=b"EXAMPLE", payload=b'[1,"x"]')
+    example_line = line_types.Line(prefix=b"EXAMPLE", payload=b'[1,"x"]')
     example_payload = line_parsing.try_payload(example_line, ExamplePayload)
     assert example_payload == ExamplePayload(a=1, b="x")
 
-    example_line = Line(prefix=b"OTHER", payload=b'[2,"y"]')
+    example_line = line_types.Line(prefix=b"EXAMPLE", payload=b"[1]")
+    example_payload = line_parsing.try_payload(example_line, ExamplePayload)
+    assert example_payload == ExamplePayload(a=1, b="def")
+
+    example_line = line_types.Line(prefix=b"OTHER", payload=b'[1,"x"]')
     example_payload = line_parsing.try_payload(example_line, ExamplePayload)
     assert example_payload is None
 
-    example_line = Line(prefix=b"EXAMPLE", payload=b'["x",1]')
+    example_line = line_types.Line(prefix=b"EXAMPLE", payload=b'["x",1]')
     example_payload = line_parsing.try_payload(example_line, ExamplePayload)
     assert example_payload is None
 
 
 def test_from_payload():
     line = line_parsing.from_payload(ExamplePayload(a=1, b="x"))
-    assert line == Line(prefix=b"EXAMPLE", payload=b'[1,"x"]')
+    assert line == line_types.Line(prefix=b"EXAMPLE", payload=b'[1,"x"]')
+
+    # we wish the default value was elided!
+    line = line_parsing.from_payload(ExamplePayload(a=1, b="def"))
+    assert line == line_types.Line(prefix=b"EXAMPLE", payload=b'[1,"def"]')

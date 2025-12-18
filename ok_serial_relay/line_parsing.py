@@ -2,18 +2,16 @@
 
 import anycrc  # type: ignore
 import base64
-import json
 import logging
+import pydantic
 import re
-from typing import NamedTuple, TypeVar
-
-from pydantic import ValidationError
+import typing
 
 from ok_serial_relay.line_types import Line
 
 logger = logging.getLogger(__name__)
 
-_NT = TypeVar("_NT", bound=NamedTuple)
+_NT = typing.TypeVar("_NT", bound=typing.NamedTuple)
 
 # https://users.ece.cmu.edu/~koopman/crc/c18/0x25f53.txt
 # an 18-bit (3-base64-char) CRC with decent protection across lengths
@@ -36,16 +34,17 @@ _LINE_RE = re.compile(
 )
 
 
+@pydantic.validate_call
 def try_from_bytes(data: bytes) -> Line | None:
     match = _LINE_RE.fullmatch(data)
     if not match:
         logger.debug("Bad format: %s", data)
         return None
-    prefix, json_bytes, check = match.groups()
+    prefix, payload, check = match.groups()
     if not check.startswith(b"~"):
         check_bytes = base64.urlsafe_b64decode(b"A" + check)
         check_value = int.from_bytes(check_bytes, "big")
-        actual_crc = _crc18.calc(prefix + json_bytes)
+        actual_crc = _crc18.calc(prefix + payload)
         if check_value != actual_crc:
             logger.warning(
                 "CRC mismatch: 0x%x (%s) != 0x%x",
@@ -55,9 +54,10 @@ def try_from_bytes(data: bytes) -> Line | None:
                 exc_info=True,
             )
             return None
-    return Line(prefix=prefix, payload=json_bytes)
+    return Line(prefix=prefix, payload=payload)
 
 
+@pydantic.validate_call
 def to_bytes(line: Line | None) -> bytes:
     if not line:
         return b""
@@ -74,40 +74,23 @@ def to_bytes(line: Line | None) -> bytes:
 
 
 def try_payload(line: Line | None, payload_type: type[_NT]) -> _NT | None:
-    prefix = getattr(payload_type, "PREFIX", b"")
-    adapter = getattr(payload_type, "Adapter", None)
-    if adapter is None:
-        raise ValueError(
-            f"{payload_type.__name__} missing .Adapter (use @payload)"
-        )
-    if line and prefix == line.prefix:
+    prefix, adapter = _payload_meta(payload_type)
+    if line and line.prefix == prefix:
         try:
             return adapter.validate_json(line.payload)
-        except ValidationError:
-            logger.warning(
-                "Bad decode (%s): %s",
-                payload_type.__name__,
-                line.payload,
-                exc_info=True,
-            )
+        except pydantic.ValidationError:
+            name = payload_type.__name__
+            logger.warning("Bad %s: %s", name, line.payload, exc_info=True)
     return None
 
 
-def from_payload(payload: _NT, *, omit_defaults: bool = False) -> Line:
-    prefix = getattr(type(payload), "PREFIX", b"")
+def from_payload(payload: _NT) -> Line:
+    prefix, adapter = _payload_meta(type(payload))
+    payload_json = adapter.dump_json(payload, exclude_defaults=True)
+    return Line(prefix=prefix, payload=payload_json)
 
-    if omit_defaults and hasattr(payload, "_field_defaults"):
-        defaults = payload._field_defaults
-        values = list(payload)
-        # Trim trailing default values
-        while values and payload._fields:
-            field = payload._fields[len(values) - 1]
-            if field in defaults and values[-1] == defaults[field]:
-                values.pop()
-            else:
-                break
-    else:
-        values = list(payload)
 
-    json_bytes = json.dumps(values, separators=(",", ":")).encode()
-    return Line(prefix=prefix, payload=json_bytes)
+def _payload_meta(pt: type[_NT]) -> tuple[bytes, pydantic.TypeAdapter]:
+    if not (adapter := getattr(pt, "ADAPTER", None)):
+        setattr(pt, "ADAPTER", adapter := pydantic.TypeAdapter(pt))
+    return (getattr(pt, "PREFIX"), adapter)
