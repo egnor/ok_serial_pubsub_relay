@@ -7,7 +7,7 @@ import typing
 from ok_serial_relay import foxglove_jsonschema
 from ok_serial_relay import line_types
 from ok_serial_relay import line_parsing
-from ok_serial_relay import timing
+from ok_serial_relay import time_tracker
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ class Session:
         self._in_messages: list[IncomingMessage] = []
         self._local_profile = profile[:]
         self._remote_profile: list[line_types.ProfileEntryBase] = []
-        self._time_tracker = timing.TimeTracker(
+        self._time_tracker = time_tracker.TimeTracker(
             when=when,
             profile_id=hash(tuple(profile)),
             profile_len=len(profile),

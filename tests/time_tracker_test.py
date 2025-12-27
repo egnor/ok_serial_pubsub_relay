@@ -1,14 +1,14 @@
 """Unit tests for ok_serial_relay.timing"""
 
 from ok_serial_relay import line_types
-from ok_serial_relay import timing
+from ok_serial_relay import time_tracker
 
 JAN_1_2025_123456Z = 1735734896.0
 
 
-def test_outgoing_query_timing():
+def test_send_periodic_outgoing_queries():
     start = JAN_1_2025_123456Z
-    tracker = timing.TimeTracker(when=start, profile_id=0, profile_len=0)
+    tracker = time_tracker.TimeTracker(when=start, profile_id=0, profile_len=0)
     assert tracker.has_payload_to_send(when=start)
     assert tracker.has_payload_to_send(when=start + 1.5)
     tqp = line_types.TimeQueryPayload(yyyymmdd=20250101, hhmmssmmm=123457555)
@@ -35,9 +35,9 @@ def test_outgoing_query_timing():
     assert tracker.get_payload_to_send(when=start + 10.6) is None
 
 
-def test_incoming_query_replying():
+def test_reply_to_incoming_query():
     start = JAN_1_2025_123456Z
-    tracker = timing.TimeTracker(when=start, profile_id=123, profile_len=456)
+    tracker = time_tracker.TimeTracker(when=start, profile_id=3, profile_len=5)
     tracker.get_payload_to_send(when=start)
     assert not tracker.has_payload_to_send(when=start + 3)
 
